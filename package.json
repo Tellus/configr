@@ -2,14 +2,13 @@
   "name": "@specialminds/configr",
   "version": "0.1.1-0",
   "description": "Small library to help you write better config files. Uses reflect-metadata to read, write, and validate JSON config files based on classes.",
-  "main": "src/index.ts",
+  "main": "dist/index.mjs",
   "directories": {
-    "test": "test"
+    "test": "test",
+    "lib": "src"
   },
   "dependencies": {
-    "@types/lodash": "^4.14.159",
     "@types/node": "^14.0.27",
-    "lodash": "^4.17.19",
     "reflect-metadata": "^0.1.13",
     "typescript": "^3.9.7"
   },

@@ -1,5 +1,5 @@
-import { Configr, Prop } from '../src/';
 import 'mocha';
+import { Configr, Prop } from '../src/index';
 import { assert, expect } from 'chai';
 
 class TestConfig1 {

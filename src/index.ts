@@ -1,5 +1,4 @@
 import 'reflect-metadata';
-import * as _ from 'lodash';
 import * as fsSync from 'fs';
 
 export declare type AnyParamConstructor<T> = new (...args: any) => T;

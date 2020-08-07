@@ -1,0 +1,8 @@
+{
+  "color": true,
+  "ui": "bdd",
+  "spec": "test/**/*.spec.ts",
+  "require": "ts-node/register",
+  "timeout": 999999,
+  "inspect": true
+}

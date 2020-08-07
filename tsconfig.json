@@ -7,10 +7,8 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "moduleResolution": "node",
-    "esModuleInterop": true,
     "types": [
       "node",
-      "mocha",
     ],
   }
 }

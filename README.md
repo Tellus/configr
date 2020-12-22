@@ -63,8 +63,9 @@ easy-to-use way to manage configurations for your applications.
 ### Future ideas ("roadmap")
 
 - Full testing suite.
-- read/write to file directly on the augmented config object.
-- Asynchronous methods.
+- Read/write to file directly on the augmented config object.
+- Support for nested objects.
+- ~~Asynchronous methods.~~
 - Additional features on decorators (validators, parsers, transformers, proper support for full objects in structure).
 - Improvements to documentation
 - ???

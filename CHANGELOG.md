@@ -1,0 +1,4 @@
+- 0.2.0 (2020/12/22):
+  - Added support for JSON5 and YAML files.
+  - Added asynchronous versions of read/write functions.
+  - Added CHANGELOG (this file).

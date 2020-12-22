@@ -1,9 +1,40 @@
 import 'reflect-metadata';
 import * as fsSync from 'fs';
+import { promises as fs } from 'fs';
+import * as path from 'path';
+
+// Import format parsers
+import * as json5 from 'json5';
+import * as yaml from 'js-yaml';
 
 export declare type AnyParamConstructor<T> = new (...args: any) => T;
 
+type FileFormat = 'json' | 'json5' | 'yaml';
+
 const ConfigPropListKey = Symbol('ConfigPropListKey');
+
+/**
+ * Try to guess a fitting parsing function based on a file extension.
+ * @param extension File extension. If first character is a period, it will be
+ * ignored. The extension is not case sensitive.
+ */
+function guessParseFunction(extension:string): ((value:string) => any) | null {
+  switch (extension.toLowerCase().replace('.', '')) {
+    case 'json': return (value) => JSON.parse(value);
+    case 'yaml': return (value) => yaml.safeLoad(value, { json: true, schema: yaml.JSON_SCHEMA });
+    case 'json5': return (value) => json5.parse(value);
+    default: return null;
+  }
+}
+
+function guessSerializerFunction(extension:string): ((value:any) => string) | null {
+  switch (extension.toLowerCase().replace('.', '')) {
+    case 'json': return (value) => JSON.stringify(value);
+    case 'yaml': return (value) => yaml.safeDump(value, { schema: yaml.JSON_SCHEMA, noCompatMode: true });
+    case 'json5': return (value) => json5.stringify(value);
+    default: return null;
+  }
+}
 
 export interface IConfigrReadOptions {
   
@@ -72,32 +103,119 @@ export class Configr<T extends AnyParamConstructor<any>> {
   /**
    * Reads a config file from disk, validates its structure, and returns it as
    * a user-defined configuration object.
-   * @param path Path of the file to read.
+   * @param filePath Path of the file to read.
    * @param opts Optional options for the read and verify operations.
    */
-  readFromFileSync(path: fsSync.PathLike, objArgs?:ConstructorParameters<T>, opts?:IConfigrReadOptions): InstanceType<T> {
-    // Parse JSON data from the config file.
-    const obj:any = JSON.parse(fsSync.readFileSync(path).toString());
-    // Pass on to the JSON-specific parser.
-    return this.parseJson(obj, objArgs, opts);
+  readFromFileSync(filePath: fsSync.PathLike, objArgs?:ConstructorParameters<T>, opts?:IConfigrReadOptions): InstanceType<T> {
+    if (!fsSync.existsSync(filePath)) {
+      throw new Error(`No file at: ${filePath}`);
+    }
+
+    const rawFile:string = fsSync.readFileSync(filePath, 'utf-8');
+
+    return this.fileReaderFn(rawFile, filePath, objArgs, opts);
   }
 
-  writeToFileSync(obj: T, path: fsSync.PathLike): void {
+  /**
+   * Asynchronously reads a config file from disk, validates its structure, and
+   * returns it as a user-defined configuration object.
+   * @param filePath Path of the file to read.
+   * @param opts Optional options for the read and verify operations.
+   */
+  async readFromFile(filePath: fsSync.PathLike, objArgs?:ConstructorParameters<T>, opts?:IConfigrReadOptions): Promise<InstanceType<T>> {
+    const stat = fs.stat(filePath);
+
+    if (!(await stat).isFile()) {
+      throw new Error(`No file at: ${filePath}`);
+    }
+
+    const rawFile:string = await fs.readFile(filePath, 'utf-8');
+
+    return this.fileReaderFn(rawFile, filePath, objArgs, opts);
+  }
+
+  private fileReaderFn(rawFile: string, filePath: fsSync.PathLike, objArgs?:ConstructorParameters<T>, opts?:IConfigrReadOptions): InstanceType<T> {
+    // Parse the config data using an appropriate parser.
+    const extension:string = path.extname(filePath.toString()).toLowerCase();
+    const parseFn = guessParseFunction(extension);
+
+    if (!parseFn) {
+      throw new Error(`No parser found for file extension "${extension}.`);
+    }
+    
+    // Pass on to the object reader.
+    return this.loadFromObject(parseFn(rawFile), objArgs, opts);
+  }
+
+  /**
+   * Writes a config object to disk.
+   * @param obj The object to serialize.
+   * @param filePath Target path for the file. Any existing file will be overwritten!
+   * @param format Optional, the format to save in. If omitted, will try to
+   * guess based on the paths extension, ultimately falling back to 'json'.
+   */
+  writeToFileSync(obj: T, filePath: fsSync.PathLike, format?: FileFormat): void {
+    fsSync.writeFileSync(filePath, this.writeFilePrep(obj, filePath, format));
+  }
+
+  /**
+   * Writes a config object to disk asynchronously.
+   * @param obj The object to serialize.
+   * @param filePath Target path for the file. Any existing file will be overwritten!
+   * @param format Optional, the format to save in. If omitted, will try to
+   * guess based on the paths extension, ultimately falling back to 'json'.
+   */
+  async writeToFile(obj: T, filePath: fsSync.PathLike, format?: FileFormat): Promise<void> {
+    return fs.writeFile(filePath, this.writeFilePrep(obj, filePath, format));
+  }
+
+  /**
+   * Shared preparation between writeToFile and writeToFileSync.
+   * @param obj The object to stringify.
+   * @param filePath Full intended path (used as extension fallback).
+   * @param format Format to stringify to. If omitted, guesses based on
+   * extension or falling entirely back to JSON.
+   */
+  private writeFilePrep(obj: T, filePath: fsSync.PathLike, format?: FileFormat): string {
     // Create a POJO.
     const writeObj:{ [key:string]: any } = {};
     // Map all decorated properties to the POJO given their names.
     this.propList.forEach(prop => {
       writeObj[prop.name] = Reflect.get(obj, prop.propertyKey);
     });
+
     // Write the POJO to disk.
-    fsSync.writeFileSync(path, JSON.stringify(writeObj, null, 2));
+    var serializer = guessSerializerFunction(format || path.extname(filePath.toString()));
+
+    // Fallback if no format matched.
+    if (!serializer) serializer = JSON.stringify;
+
+    return serializer(writeObj);
   }
 
   /**
    * Writes a new config file with default values to a given path.
-   * @param path Where to write the default config file.
+   * @param filePath Where to write the default config file.
+   * @param format Target format. @see FileFormat for supported formats.
    */
-  writeDefaultSync(path: fsSync.PathLike): void {
+  writeDefaultSync(filePath: fsSync.PathLike, format?: FileFormat): void {
+    fsSync.writeFileSync(filePath, this.serializeDefault(format || path.extname(filePath.toString())));
+  }
+
+  /**
+   * Asynchronously writes a new config file with default values to a given
+   * path.
+   * @param filePath Where to write the default config file.
+   * @param format Target format. @see FileFormat for supported formats.
+   */
+  async writeDefault(filePath: fsSync.PathLike, format?: FileFormat): Promise<void> {
+    return fs.writeFile(filePath, this.serializeDefault(format || path.extname(filePath.toString())));
+  }
+
+  /**
+   * Shared code between writeDefaultSync and writeDefault.
+   */
+  private serializeDefault(format: FileFormat | string = 'json'): string {
     const outObj: { [key:string]: any } = {};
 
     this.propList.forEach(prop => {
@@ -108,7 +226,8 @@ export class Configr<T extends AnyParamConstructor<any>> {
       }
     });
 
-    fsSync.writeFileSync(path, JSON.stringify(outObj, null, 2));
+    const serializer = guessSerializerFunction(format) || JSON.stringify;
+    return serializer(outObj);
   }
 
   /**
@@ -124,11 +243,7 @@ export class Configr<T extends AnyParamConstructor<any>> {
     });
   }
 
-  parseJson(json: string | any, objArgs?:ConstructorParameters<T>, opts?:IConfigrReadOptions): InstanceType<T> {
-    // If stringified, co-erce to object.
-    if (typeof json === 'string')
-      json = JSON.parse(json);
-
+  loadFromObject(obj: any, objArgs?:ConstructorParameters<T>, opts?:IConfigrReadOptions): InstanceType<T> {
     const missingProperties:string[] = [];
 
     // Construct a new config object.
@@ -144,13 +259,13 @@ export class Configr<T extends AnyParamConstructor<any>> {
       //   console.warn(`The property ${prop.propertyKey.toString()} already has a value! It will be overridden.`);
 
       // Missing required property.
-      if (prop.required && !Reflect.has(json, prop.name))
+      if (prop.required && !Reflect.has(obj, prop.name))
         missingProperties.push(prop.name);
 
       if (missingProperties.length)
         throw new Error(`Missing properties in source data: ${missingProperties.join(',')}`);
 
-      Reflect.set(cfgObj, prop.propertyKey, json[prop.name] || prop.default);
+      Reflect.set(cfgObj, prop.propertyKey, obj[prop.name] || prop.default);
     });
     return cfgObj;
   }

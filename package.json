@@ -1,6 +1,6 @@
 {
   "name": "@specialminds/configr",
-  "version": "0.2.1",
+  "version": "0.2.0",
   "description": "Small library to help you write better config files. Uses reflect-metadata to read, write, and validate JSON config files based on classes.",
   "main": "dist/src/index.js",
   "directories": {
@@ -24,7 +24,8 @@
     "ts-node": "^8.10.2"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "mocha",
+    "prepack": "tsc"
   },
   "repository": {
     "type": "git",

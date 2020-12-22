@@ -32,7 +32,7 @@ describe('Configr: TestConfig1', () => {
       password: 'testPassword',
     };
 
-    const testa = cfgr.parseJson(baseObject);
+    const testa = cfgr.loadFromObject(baseObject);
 
     expect(testa).to.exist;
     expect(testa.password).to.equal(baseObject.password);
